@@ -1,1 +1,54 @@
+# spacy_ner_sentiment.py
+# Requirements: spacy, pip install en_core_web_sm (or run: python -m spacy download en_core_web_sm)
+import spacy
+from spacy.matcher import Matcher
+import re
+
+nlp = spacy.load("en_core_web_sm")
+matcher = Matcher(nlp.vocab)
+
+# Example simple pattern: sequences of Proper Nouns or Titlecase words (possible product names)
+pattern = [{"IS_TITLE": True, "OP": "+"}]
+matcher.add("POTENTIAL_PRODUCT", [pattern])
+
+# simple sentiment lexicon (example)
+positive = {"good", "great", "excellent", "love", "loved", "awesome", "amazing", "perfect"}
+negative = {"bad", "terrible", "awful", "hate", "hated", "poor", "disappointing"}
+
+def extract_products_and_brands(text):
+    doc = nlp(text)
+    ents = [(ent.text, ent.label_) for ent in doc.ents if ent.label_ in ("PRODUCT","ORG")]
+    # matcher results
+    matches = matcher(doc)
+    matches_txt = [doc[start:end].text for _, start, end in matches]
+    # heuristic: prefer NER entities but include matcher hits
+    candidates = list(dict.fromkeys([t for t,_ in ents] + matches_txt))
+    return candidates
+
+def rule_based_sentiment(text):
+    text_l = text.lower()
+    # negation handling: find "not <word>"
+    negations = re.findall(r"\bnot\s+(\w+)", text_l)
+    score = 0
+    for w in positive:
+        score += text_l.count(w)
+    for w in negative:
+        score -= text_l.count(w)
+    # flip if negation affects a positive word
+    for neg in negations:
+        if neg in positive:
+            score -= 2
+    return "positive" if score>0 else "negative" if score<0 else "neutral"
+
+# Example run
+reviews = [
+    "I love the Acme Bluetooth Headphones — sound is great and battery life is perfect.",
+    "The Generic brand phone case from Acme was disappointing and felt cheap."
+]
+
+for r in reviews:
+    print("Review:", r)
+    print("Entities/Products:", extract_products_and_brands(r))
+    print("Sentiment:", rule_based_sentiment(r))
+    print("---")
 
